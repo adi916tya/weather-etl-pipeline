@@ -50,6 +50,31 @@ def fetch_weather():
     return pd.DataFrame(rows)
 
 
+MIN_TEMP, MAX_TEMP = -10, 55  # realistic range for India, in °C
+
+
+def validate(df):
+    """Data quality gate: stop with a clear error if anything looks wrong."""
+    errors = []
+
+    if len(df) != len(CITIES):
+        errors.append(f"Expected {len(CITIES)} rows, got {len(df)}")
+
+    if df[["city", "temperature_c", "timestamp"]].isnull().any().any():
+        errors.append("Found missing (null) values")
+
+    if df["city"].duplicated().any():
+        errors.append("Found duplicate cities in one run")
+
+    out_of_range = df[(df["temperature_c"] < MIN_TEMP) | (df["temperature_c"] > MAX_TEMP)]
+    if not out_of_range.empty:
+        errors.append(f"Temperature outside {MIN_TEMP} to {MAX_TEMP} °C:\n{out_of_range}")
+
+    if errors:
+        raise ValueError("Data validation failed:\n- " + "\n- ".join(errors))
+    print("Validation passed")
+
+
 def save_to_db(df):
     """Load: append the DataFrame to the weather table in SQLite."""
     with sqlite3.connect(DB_FILE) as conn:
@@ -77,6 +102,7 @@ def make_chart():
 def main():
     df = fetch_weather()
     print(df)
+    validate(df)  # stops here if the data is bad, nothing gets saved
     save_to_db(df)
     make_chart()
     print(f"Saved to {DB_FILE} and chart to {CHART_FILE}")
