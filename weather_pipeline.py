@@ -4,6 +4,15 @@ Run: python weather_pipeline.py
 Each run appends one reading per city to weather.db and
 saves a fresh chart as avg_temp.png.
 """
+# 1) Add these two imports at the top of weather_pipeline.py
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+# 2) Paste this inside validate(), just above the line: if errors:
+    now_ist = datetime.now(ZoneInfo("Asia/Kolkata")).replace(tzinfo=None)
+    stale = df[now_ist - pd.to_datetime(df["timestamp"]) > timedelta(hours=2)]
+    if not stale.empty:
+        errors.append(f"Stale data (older than 2 hours IST):\n{stale}")
 
 import sqlite3
 
