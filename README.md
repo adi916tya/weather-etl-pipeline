@@ -1,39 +1,71 @@
-# Weather ETL Pipeline
+# Weather ETL Pipeline + Live Dashboard
 
-A small data engineering project that collects live temperatures for six Indian cities (Pune, Bangalore, Kolkata, Ahmedabad, Chennai, Delhi) and tracks them over time.
+![India Weather Dashboard](dashboard_overview.png)
 
-**Extract** from the free [Open-Meteo API](https://open-meteo.com/) (no API key needed) -> **Transform** with pandas -> **Load** into SQLite -> **Analyze** with SQL and a matplotlib chart.
+**Live app:** https://india-weather-dashboard-etl.streamlit.app/
+
+A beginner-friendly data engineering project that collects live temperatures for six Indian cities (Pune, Bangalore, Kolkata, Ahmedabad, Chennai, Delhi) every 6 hours, checks the data quality, stores it, and shows it on an interactive dashboard. Built entirely with free tools.
+
+## Architecture
+
+`Open-Meteo API → Python/pandas → validate → SQLite → GitHub Actions (every 6h) → Streamlit dashboard`
+
+## Dashboard
+
+- **5 KPIs:** average temperature now (with change since the last run), hottest city, coolest city, total readings, last updated
+- **Filters:** pick cities and a date range
+- **Overview:** temperature over time per city, and a ranked "right now" bar chart
+- **Compare cities:** average per city, temperature spread (box plot), hour-of-day heatmap
+- **Data:** raw table with CSV download
+
+<!-- Screenshots to add later (upload the images to the repo, then remove these comment tags):
+![Compare cities](dashboard_compare.png)
+![GitHub Actions runs](actions_runs.png)
+-->
+
+## Data quality checks
+
+Before saving, `validate()` stops the run if any check fails, so bad data is never stored:
+
+- exactly 6 rows (one per city)
+- no missing values
+- no duplicate cities
+- temperature between -10 and 55 °C
+- timestamp not older than 2 hours (IST)
+
+Rows already saved (same city and timestamp) are skipped.
 
 ## How to run
 
-1. Install Python 3.9 or newer.
-2. Install the dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-3. Run the pipeline:
-   ```
-   python weather_pipeline.py
-   ```
+```
+pip install -r requirements.txt
+python weather_pipeline.py      # fetch, validate, save to weather.db, make avg_temp.png
+streamlit run dashboard.py      # open the dashboard
+```
 
-Each run adds one reading per city to the `weather` table in `weather.db` and saves an average-temperature chart as `avg_temp.png`.
-
-## Check the data
-
-`weather.db` is a binary SQLite file, so do not open it in a text editor. Query it instead:
+`weather.db` is a binary SQLite file, so don't open it in a text editor. Query it instead:
 
 ```python
 import sqlite3, pandas as pd
-conn = sqlite3.connect("weather.db")
-print(pd.read_sql("SELECT * FROM weather", conn))
+print(pd.read_sql("SELECT * FROM weather", sqlite3.connect("weather.db")))
 ```
 
 ## Files
 
-- `weather_pipeline.py` - the full pipeline
+- `weather_pipeline.py` - fetch, validate, save, chart
+- `dashboard.py` - Streamlit dashboard
 - `requirements.txt` - Python dependencies
-- `.github/workflows/weather.yml` - runs the pipeline every 6 hours on GitHub Actions
+- `.github/workflows/weather.yml` - runs the pipeline every 6 hours and commits `weather.db`
+
+## What I learned
+
+- Building an ETL pipeline: extract from an API, transform with pandas, load into SQLite
+- Why data validation matters before storing anything
+- Automating a job with GitHub Actions and cron schedules
+- Debugging real errors: a corrupted `.db` file, YAML indentation, and failing workflow runs
+- Turning raw data into KPIs and interactive charts, then deploying for free
+- Writing short, clear prompts and checking AI-generated code before trusting it
 
 ## Tools
 
-Python, pandas, SQLite, matplotlib, GitHub Actions. All free.
+Python, pandas, SQLite, Plotly, Streamlit, GitHub Actions, Open-Meteo API. All free.
