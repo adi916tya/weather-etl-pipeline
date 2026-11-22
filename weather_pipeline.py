@@ -4,17 +4,10 @@ Run: python weather_pipeline.py
 Each run appends one reading per city to weather.db and
 saves a fresh chart as avg_temp.png.
 """
-# 1) Add these two imports at the top of weather_pipeline.py
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
-
-# 2) Paste this inside validate(), just above the line: if errors:
-    now_ist = datetime.now(ZoneInfo("Asia/Kolkata")).replace(tzinfo=None)
-    stale = df[now_ist - pd.to_datetime(df["timestamp"]) > timedelta(hours=2)]
-    if not stale.empty:
-        errors.append(f"Stale data (older than 2 hours IST):\n{stale}")
 
 import sqlite3
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import matplotlib
 matplotlib.use("Agg")  # no display needed, works on servers and GitHub Actions
@@ -79,15 +72,32 @@ def validate(df):
     if not out_of_range.empty:
         errors.append(f"Temperature outside {MIN_TEMP} to {MAX_TEMP} °C:\n{out_of_range}")
 
+    now_ist = datetime.now(ZoneInfo("Asia/Kolkata")).replace(tzinfo=None)
+    stale = df[now_ist - pd.to_datetime(df["timestamp"]) > timedelta(hours=2)]
+    if not stale.empty:
+        errors.append(f"Stale data (older than 2 hours IST):\n{stale}")
+
     if errors:
         raise ValueError("Data validation failed:\n- " + "\n- ".join(errors))
     print("Validation passed")
 
 
 def save_to_db(df):
-    """Load: append the DataFrame to the weather table in SQLite."""
+    """Load: append only rows whose (city, timestamp) are not already saved."""
     with sqlite3.connect(DB_FILE) as conn:
+        try:
+            existing = pd.read_sql("SELECT city, timestamp FROM weather", conn)
+            df = df.merge(existing, on=["city", "timestamp"], how="left", indicator=True)
+            df = df[df["_merge"] == "left_only"].drop(columns="_merge")
+        except pd.errors.DatabaseError:
+            pass  # first run: the weather table doesn't exist yet
+
+        if df.empty:
+            print("No new rows, skipping save")
+            return
+
         df.to_sql("weather", conn, if_exists="append", index=False)
+        print(f"Saved {len(df)} new rows")
 
 
 def make_chart():
