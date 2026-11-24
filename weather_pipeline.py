@@ -30,33 +30,44 @@ CITIES = {
 }
 
 
-def get_with_retry(params, attempts=4, timeout=20):
-    """Call the API, retrying on timeouts and temporary errors (waits 2s, 4s, 8s...)."""
+def get_with_retry(params, attempts=5, timeout=30):
+    """Call the API, retrying on timeouts, rate limits (429) and server errors."""
     for attempt in range(1, attempts + 1):
         try:
             response = requests.get(API_URL, params=params, timeout=timeout)
+            if response.status_code == 429 or response.status_code >= 500:
+                response.raise_for_status()  # treat as retryable
             response.raise_for_status()
             return response
         except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as err:
             if attempt == attempts:
                 raise  # out of retries: fail loudly so the run shows red
-            wait = 2 ** attempt
+            wait = 10 * attempt  # 10s, 20s, 30s, 40s: gives rate limits time to reset
+            retry_after = getattr(getattr(err, "response", None), "headers", {}).get("Retry-After")
+            if retry_after and retry_after.isdigit():
+                wait = max(wait, min(int(retry_after), 120))
             print(f"Attempt {attempt} failed ({type(err).__name__}), retrying in {wait}s...")
             time.sleep(wait)
 
 
 def fetch_weather():
-    """Extract + Transform: call the API for each city, return a DataFrame."""
+    """Extract + Transform: ONE API call for all cities, return a DataFrame."""
+    names = list(CITIES)
+    params = {
+        "latitude": ",".join(str(CITIES[c][0]) for c in names),
+        "longitude": ",".join(str(CITIES[c][1]) for c in names),
+        "current": "temperature_2m",
+        "timezone": "Asia/Kolkata",
+    }
+    results = get_with_retry(params).json()
+    if isinstance(results, dict):  # a single location comes back as a dict
+        results = [results]
+    if len(results) != len(names):
+        raise ValueError(f"Expected {len(names)} locations from API, got {len(results)}")
+
     rows = []
-    for city, (lat, lon) in CITIES.items():
-        params = {
-            "latitude": lat,
-            "longitude": lon,
-            "current": "temperature_2m",
-            "timezone": "Asia/Kolkata",
-        }
-        response = get_with_retry(params)
-        current = response.json()["current"]
+    for city, result in zip(names, results):  # API returns results in request order
+        current = result["current"]
         rows.append(
             {
                 "city": city,
