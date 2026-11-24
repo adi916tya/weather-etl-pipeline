@@ -65,6 +65,7 @@ print(pd.read_sql("SELECT * FROM weather", sqlite3.connect("weather.db")))
 - Debugging real errors: a corrupted `.db` file, YAML indentation, and failing workflow runs
 - Turning raw data into KPIs and interactive charts, then deploying for free
 - Writing short, clear prompts and checking AI-generated code before trusting it
+- Handling flaky APIs with retries and backoff
 
 ## Tools
 
