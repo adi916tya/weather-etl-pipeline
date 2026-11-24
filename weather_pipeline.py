@@ -6,6 +6,7 @@ saves a fresh chart as avg_temp.png.
 """
 
 import sqlite3
+import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
@@ -29,6 +30,21 @@ CITIES = {
 }
 
 
+def get_with_retry(params, attempts=4, timeout=20):
+    """Call the API, retrying on timeouts and temporary errors (waits 2s, 4s, 8s...)."""
+    for attempt in range(1, attempts + 1):
+        try:
+            response = requests.get(API_URL, params=params, timeout=timeout)
+            response.raise_for_status()
+            return response
+        except (requests.Timeout, requests.ConnectionError, requests.HTTPError) as err:
+            if attempt == attempts:
+                raise  # out of retries: fail loudly so the run shows red
+            wait = 2 ** attempt
+            print(f"Attempt {attempt} failed ({type(err).__name__}), retrying in {wait}s...")
+            time.sleep(wait)
+
+
 def fetch_weather():
     """Extract + Transform: call the API for each city, return a DataFrame."""
     rows = []
@@ -39,8 +55,7 @@ def fetch_weather():
             "current": "temperature_2m",
             "timezone": "Asia/Kolkata",
         }
-        response = requests.get(API_URL, params=params, timeout=10)
-        response.raise_for_status()
+        response = get_with_retry(params)
         current = response.json()["current"]
         rows.append(
             {
